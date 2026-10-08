@@ -23,9 +23,11 @@
 #include "log.h"
 #include "usb_key.pio.h"
 
+#if !defined(RASPBERRYPI_PICO_W) && !defined(WAVESHARE_RP2040_ZERO)
 #define LED_R 17
 #define LED_G 16
 #define LED_B 25
+#endif
 
 #define USB_KEY_WORD 0x16EF
 #define PIO_HZ 1000000
@@ -43,9 +45,16 @@ static PIO pio = pio0;
 static uint sm_key, sm_sof, off_key, off_sof;
 
 void rgb(bool r, bool g, bool b) {
+#if defined(RASPBERRYPI_PICO_W) || defined(WAVESHARE_RP2040_ZERO)
+    // These boards do not have XIAO's three GPIO LEDs. Use console status.
+    (void)r;
+    (void)g;
+    (void)b;
+#else
     gpio_put(LED_R, !r);
     gpio_put(LED_G, !g);
     gpio_put(LED_B, !b);
+#endif
 }
 
 static void pad_setup(uint pin, enum gpio_drive_strength ds) {
@@ -302,6 +311,7 @@ void recovery_pulses_only(uint32_t ms) {
 }
 
 void recovery_init(void) {
+#if !defined(RASPBERRYPI_PICO_W) && !defined(WAVESHARE_RP2040_ZERO)
     gpio_init(LED_R);
     gpio_set_dir(LED_R, GPIO_OUT);
     gpio_init(LED_G);
@@ -309,6 +319,7 @@ void recovery_init(void) {
     gpio_init(LED_B);
     gpio_set_dir(LED_B, GPIO_OUT);
     rgb(false, false, false);
+#endif
 
     gpio_init(PIN_DP);
     gpio_init(PIN_DM);

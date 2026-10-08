@@ -11,10 +11,9 @@
     fm1t.py selftest-write --ref earlier-dump.bin --sector 0x92000 [--write]
     fm1t.py ramrun IMAGE.bin [--addr 0x1C02000] [--clear A:N] [--poke A:V] [--read A:N]
 
-`write` follows fm-1-research-lab's restore policy, and is a dry run unless
---write is given:
-  1. the package must pass fm1_ota.require_reviewed (stock V15, or a PASSED
-     hookcheck manifest; known-bad hashes refused);
+`write` restores only the locally verified stock V15 package, and is a dry
+run unless --write is given:
+  1. the entire package must match the pinned SHA-256; all others refused;
   2. chip key 980F and flash 856014;
   3. a fresh full read must equal --ref over the package region;
   4. only differing 4 KiB sectors are written; none may lie below 0x4000;
@@ -25,14 +24,12 @@ The firmware itself refuses any sector outside [0x4000, 0x93000).
 info/dump/write enter UBOOT by themselves when stock V15 is running on the
 transporter. A unit without working firmware needs the USB_KEY path: start
 the transporter with the FM-1 off (or `rekey`), then switch the FM-1 on.
-Requires pyserial, and fm-1-research-lab (FM1_RESEARCH, default
-~/fm-1-research-lab) for `write`.
+Requires pyserial. No research-lab modules are needed for stock V15 restore.
 """
 
 import argparse
 import glob
 import hashlib
-import os
 import sys
 import time
 import zlib
@@ -202,28 +199,26 @@ def compare(ref_path, addr, data):
 
 WRITE_MIN = 0x4000     # flash header, SPL, isd_config below this: never written
 
+# Exact package inspected in firmware-inspection/RESULTS.md. Its application
+# hash matches the independently reported V15 image. Fixed offsets are valid
+# only after checking the entire package, not for arbitrary FWSC files.
+V15_PACKAGE_SHA256 = "db1642b2b6fa5c2cccb11ffd13878068bb28601678d3644049f99dc40e7edb8a"
+V15_FLASH_OFFSET = 0x414
+
 
 def package_image(path):
-    """Gate the package with fm-1-research-lab's review check, then return its
-    type-0 flash entry (raw flash image from address 0)."""
-    research = os.path.expanduser(os.environ.get("FM1_RESEARCH", "~/fm-1-research-lab"))
-    sys.path.insert(0, os.path.join(research, "tools"))
-    try:
-        from fm1_ota import require_reviewed
-        from fm1fw import Firmware
-    except ImportError as e:
-        sys.exit(f"fm1t: fm-1-research-lab tools not importable from {research} ({e}); "
-                 "refusing to write without the package review")
-    require_reviewed(path)     # exits on known-bad or unreviewed packages
-    fw = Firmware(open(path, "rb").read())
-    e = next(e for e in fw.entries if e["type"] == 0)
-    img = bytes(fw.raw[e["data_off"] + fw.skew:e["data_off"] + fw.skew + e["size"]])
-    return img, fw.product
+    """Return the reviewed V15 flash image; reject every other package."""
+    with open(path, "rb") as f:
+        package = f.read()
+    if hashlib.sha256(package).hexdigest() != V15_PACKAGE_SHA256:
+        sys.exit("fm1t: package is not the verified stock V15 file; refusing to write")
+    return package[V15_FLASH_OFFSET:V15_FLASH_OFFSET + APP_END], "stock V15"
 
 
 def cmd_write(s, args):
     img, product = package_image(args.package)
-    ref = open(args.ref, "rb").read()
+    with open(args.ref, "rb") as f:
+        ref = f.read()
     if len(ref) != FLASH_SIZE or len(img) % SECTOR or len(img) > APP_END:
         sys.exit("fm1t: unexpected sizes (ref must be 1 MiB; image whole sectors within 0x93000)")
     diff = [a for a in range(0, len(img), SECTOR) if img[a:a + SECTOR] != ref[a:a + SECTOR]]

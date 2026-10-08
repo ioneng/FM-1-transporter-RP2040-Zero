@@ -42,7 +42,11 @@ static void core1_main(void) {
     sleep_ms(200);
 
     printf("\nFM-1 Transporter\n");
+#ifdef WAVESHARE_RP2040_ZERO
+    printf("RP2040-Zero: D+=GP0 D-=GP1, PIO host on PIO1\n");
+#else
     printf("XIAO RP2040: D+=GP0/D6 D-=GP1/D7, PIO host on PIO1\n");
+#endif
     printf("If the FM-1 runs stock V15, leave it on: fm1t enters UBOOT via the soft key.\n");
     printf("Otherwise switch it OFF, and ON again once the key is running.\n");
 
